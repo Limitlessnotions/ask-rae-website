@@ -6,37 +6,46 @@ export const dynamic = "force-dynamic";
 const CLOUDINARY_HOST = "res.cloudinary.com";
 const CLOUDINARY_CLOUD_NAME = "gmdcnulb";
 
+const TIKTOK_VERIFICATION_FILENAME =
+  "tiktokQzrOR6r65BcKdV4VMv8nNWqTd5tmGQDq.txt";
+
+const TIKTOK_VERIFICATION_CONTENT =
+  "tiktok-developers-site-verification=QzrOR6r65BcKdV4VMv8nNWqTd5tmGQDq";
+
 const ALLOWED_MEDIA_PREFIXES = [
   "/video/upload/",
   "/image/upload/",
 ];
 
-function getVerificationConfig() {
-  return {
-    filename:
-      process.env.TIKTOK_VERIFICATION_FILENAME?.trim() || "",
-    content:
-      process.env.TIKTOK_VERIFICATION_CONTENT ?? "",
-  };
-}
+function buildCloudinaryUrl(
+  pathSegments: string[]
+) {
+  const relativePath =
+    `/${pathSegments.join("/")}`;
 
-function buildCloudinaryUrl(pathSegments: string[]) {
-  const relativePath = `/${pathSegments.join("/")}`;
-
-  const allowed = ALLOWED_MEDIA_PREFIXES.some((prefix) =>
-    relativePath.startsWith(prefix)
-  );
+  const allowed =
+    ALLOWED_MEDIA_PREFIXES.some(
+      (prefix) =>
+        relativePath.startsWith(prefix)
+    );
 
   if (!allowed) {
     return null;
   }
 
-  const encodedPath = relativePath
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
+  const encodedPath =
+    relativePath
+      .split("/")
+      .map((segment) =>
+        encodeURIComponent(segment)
+      )
+      .join("/");
 
-  return `https://${CLOUDINARY_HOST}/${CLOUDINARY_CLOUD_NAME}${encodedPath}`;
+  return (
+    `https://${CLOUDINARY_HOST}/` +
+    `${CLOUDINARY_CLOUD_NAME}` +
+    encodedPath
+  );
 }
 
 function getContentType(
@@ -47,7 +56,8 @@ function getContentType(
     return upstreamContentType;
   }
 
-  const lowerPath = path.toLowerCase();
+  const lowerPath =
+    path.toLowerCase();
 
   if (lowerPath.endsWith(".mp4")) {
     return "video/mp4";
@@ -61,7 +71,10 @@ function getContentType(
     return "video/webm";
   }
 
-  if (lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg")) {
+  if (
+    lowerPath.endsWith(".jpg") ||
+    lowerPath.endsWith(".jpeg")
+  ) {
     return "image/jpeg";
   }
 
@@ -85,13 +98,17 @@ function createMediaHeaders(
   headers.set(
     "Content-Type",
     getContentType(
-      upstream.headers.get("content-type"),
+      upstream.headers.get(
+        "content-type"
+      ),
       path
     )
   );
 
   const contentLength =
-    upstream.headers.get("content-length");
+    upstream.headers.get(
+      "content-length"
+    );
 
   if (contentLength) {
     headers.set(
@@ -101,7 +118,9 @@ function createMediaHeaders(
   }
 
   const contentRange =
-    upstream.headers.get("content-range");
+    upstream.headers.get(
+      "content-range"
+    );
 
   if (contentRange) {
     headers.set(
@@ -110,12 +129,11 @@ function createMediaHeaders(
     );
   }
 
-  const acceptRanges =
-    upstream.headers.get("accept-ranges");
-
   headers.set(
     "Accept-Ranges",
-    acceptRanges || "bytes"
+    upstream.headers.get(
+      "accept-ranges"
+    ) || "bytes"
   );
 
   headers.set(
@@ -130,18 +148,25 @@ async function handleRequest(
   request: NextRequest,
   method: "GET" | "HEAD"
 ) {
-  const pathSegments =
-    (await Promise.resolve(
-      request.nextUrl.pathname
-        .replace(
-          /^\/api\/tiktok-media\/?/,
-          ""
-        )
-        .split("/")
-        .filter(Boolean)
-    ));
+  const pathname =
+    request.nextUrl.pathname;
 
-  if (pathSegments.length === 0) {
+  const prefix =
+    "/api/tiktok-media/";
+
+  if (!pathname.startsWith(prefix)) {
+    return new Response(
+      "Not Found",
+      {
+        status: 404,
+      }
+    );
+  }
+
+  const requestedPath =
+    pathname.slice(prefix.length);
+
+  if (!requestedPath) {
     return new Response(
       "Not Found",
       {
@@ -151,36 +176,32 @@ async function handleRequest(
   }
 
   /*
+   * ----------------------------------------------------
    * TikTok URL-prefix verification
-   *
-   * TikTok provides a filename and file content.
-   * We expose that exact content at:
-   *
-   * /api/tiktok-media/<filename>
-   *
-   * The values are supplied through Vercel
-   * environment variables after TikTok gives us
-   * the verification file.
+   * ----------------------------------------------------
    */
-  const verification =
-    getVerificationConfig();
-
-  const requestedPath =
-    pathSegments.join("/");
 
   if (
-    verification.filename &&
-    verification.content &&
-    requestedPath === verification.filename
+    requestedPath ===
+    TIKTOK_VERIFICATION_FILENAME
   ) {
     return new Response(
       method === "HEAD"
         ? null
-        : verification.content,
+        : TIKTOK_VERIFICATION_CONTENT,
       {
         status: 200,
         headers: {
-          "Content-Type": "text/plain",
+          "Content-Type":
+            "text/plain; charset=utf-8",
+
+          "Content-Length":
+            String(
+              new TextEncoder().encode(
+                TIKTOK_VERIFICATION_CONTENT
+              ).length
+            ),
+
           "Cache-Control":
             "public, max-age=60",
         },
@@ -189,13 +210,24 @@ async function handleRequest(
   }
 
   /*
-   * Only allow Cloudinary media paths.
+   * ----------------------------------------------------
+   * Cloudinary media proxy
+   * ----------------------------------------------------
    *
-   * This deliberately prevents this endpoint
-   * from becoming an arbitrary URL proxy.
+   * Only video/upload and image/upload paths are allowed.
+   * This prevents this endpoint from becoming an
+   * arbitrary external URL proxy.
    */
+
+  const pathSegments =
+    requestedPath
+      .split("/")
+      .filter(Boolean);
+
   const cloudinaryUrl =
-    buildCloudinaryUrl(pathSegments);
+    buildCloudinaryUrl(
+      pathSegments
+    );
 
   if (!cloudinaryUrl) {
     return new Response(
@@ -209,10 +241,12 @@ async function handleRequest(
   const range =
     request.headers.get("range");
 
-  const upstreamHeaders: HeadersInit = {};
+  const upstreamHeaders: HeadersInit =
+    {};
 
   if (range) {
-    upstreamHeaders.Range = range;
+    upstreamHeaders.Range =
+      range;
   }
 
   let upstream: Response;
@@ -222,7 +256,8 @@ async function handleRequest(
       cloudinaryUrl,
       {
         method,
-        headers: upstreamHeaders,
+        headers:
+          upstreamHeaders,
         redirect: "follow",
         cache: "no-store",
       }
@@ -251,7 +286,8 @@ async function handleRequest(
     return new Response(
       "Media unavailable.",
       {
-        status: upstream.status,
+        status:
+          upstream.status,
       }
     );
   }
@@ -267,7 +303,8 @@ async function handleRequest(
       ? null
       : upstream.body,
     {
-      status: upstream.status,
+      status:
+        upstream.status,
       headers,
     }
   );
