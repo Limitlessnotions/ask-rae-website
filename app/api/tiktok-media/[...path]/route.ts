@@ -277,21 +277,27 @@ async function handleRequest(
   }
 
   if (!upstream.ok) {
-    console.error(
-      "Cloudinary media request failed:",
-      upstream.status,
-      cloudinaryUrl
-    );
+  const errorBody = await upstream.text();
 
-    return new Response(
-      "Media unavailable.",
-      {
-        status:
-          upstream.status,
-      }
-    );
-  }
+  console.error("CLOUDINARY UPSTREAM ERROR:", {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    contentType: upstream.headers.get("content-type"),
+    body: errorBody.slice(0, 1000),
+    requestedPath: requestedPath,
+  });
 
+  return new Response(
+    "Cloudinary media unavailable.",
+    {
+      status: 502,
+      headers: {
+        "Content-Type": "text/plain",
+        "Cache-Control": "no-store",
+      },
+    }
+  );
+}
   const headers =
     createMediaHeaders(
       upstream,
