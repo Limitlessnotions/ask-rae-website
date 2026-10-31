@@ -248,7 +248,7 @@ async function handleRequest(
     upstreamHeaders.Range =
       range;
   }
-
+console.log("CLOUDINARY URL CONSTRUCTED:", cloudinaryUrl);
   let upstream: Response;
 
   try {
