@@ -42,10 +42,10 @@ function buildCloudinaryUrl(
       .join("/");
 
   return (
-    `https://${CLOUDINARY_HOST}/` +
-    `${CLOUDINARY_CLOUD_NAME}` +
-    encodedPath
-  );
+  `https://${CLOUDINARY_HOST}/` +
+  `${CLOUDINARY_CLOUD_NAME}/` +
+  encodedPath.replace(/^\/+/, "")
+);
 }
 
 function getContentType(
